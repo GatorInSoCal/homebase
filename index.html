@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Home Base</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- ============================================================
+     FIREBASE SETUP
+     1. Go to https://console.firebase.google.com
+     2. Create a project (or reuse an existing one) and add a Web App
+     3. Enable "Firestore Database" (start in production mode)
+     4. Copy your config values into firebaseConfig below
+     5. In Firestore Rules, use:
+          rules_version = '2';
+          service cloud.firestore {
+            match /databases/{database}/documents {
+              match /{document=**} {
+                allow read, write: if true;
+              }
+            }
+          }
+        (Security here comes from the app password screen + nobody else
+         knowing your project's URL, not from Firestore auth.)
+     ============================================================ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --rail-bg: #FAFAF8;
+    --ink: #221F1D;
+    --ink-muted: #6B6560;
+    --ink-faint: #A39C92;
+    --hairline: #E6E2DA;
+    --emergency: #B23A2E;
+    --emergency-ink: #FFF8F6;
+    --danger: #B23A2E;
+    --accent-wash: #F4F2EE;
+    --serif: 'Lora', serif;
+    --sans: 'Inter', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: #FFFFFF;
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- password gate ---------- */
+  #gate {
+    position: fixed; inset: 0; background: #fff;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; flex-direction: column; padding: 24px;
+  }
+  #gate .gate-word { font-family: var(--serif); font-size: 26px; margin-bottom: 4px; }
+  #gate .gate-sub { font-size: 13px; color: var(--ink-muted); margin-bottom: 22px; }
+  #gate input {
+    font-family: var(--sans); font-size: 16px; text-align: center;
+    border: 1px solid var(--hairline); border-radius: 8px;
+    padding: 12px 14px; width: 220px; outline: none; letter-spacing: 2px;
+  }
+  #gate input:focus { border-color: var(--ink-faint); }
+  #gate .gate-error { color: var(--danger); font-size: 12.5px; margin-top: 10px; min-height: 16px; }
+  #gate button {
+    margin-top: 16px; font-family: var(--sans); font-size: 14px;
+    background: var(--ink); color: #fff; border: none; border-radius: 8px;
+    padding: 10px 22px; cursor: pointer;
+  }
+
+  #app { display: none; min-height: 100%; }
+
+  .topbar { padding: 18px 20px 14px; border-bottom: 1px solid var(--hairline); }
+  .top-row { display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px; }
+  .wordmark { font-family: var(--serif); font-size: 20px; font-weight: 500; }
+  .status-dot { width:7px; height:7px; border-radius:50%; background:#B7C9A8; display:inline-block; margin-left:8px; vertical-align:middle; }
+  .status-dot.offline { background: var(--ink-faint); }
+
+  .search { display: flex; align-items: center; background: var(--accent-wash); border-radius: 8px; padding: 8px 12px; }
+  .search input { border: none; background: none; font-family: var(--sans); font-size: 14px; color: var(--ink); width: 100%; outline: none; }
+  .search input::placeholder { color: var(--ink-faint); }
+  .search svg { flex-shrink: 0; margin-right: 8px; }
+
+  .emergency-strip {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--emergency); color: var(--emergency-ink);
+    border-radius: 8px; padding: 10px 14px; margin-top: 12px; cursor: pointer; font-size: 13.5px;
+  }
+  .emergency-strip .em-label { font-family: var(--serif); font-size: 14.5px; }
+
+  .layout { display: flex; max-width: 900px; margin: 0 auto; }
+
+  .rail { width: 200px; flex-shrink: 0; background: var(--rail-bg); border-right: 1px solid var(--hairline); padding: 10px 0; min-height: calc(100vh - 130px); }
+  .rail-item { display: flex; align-items: center; gap: 10px; padding: 12px 18px; cursor: pointer; position: relative; font-size: 14px; color: var(--ink-muted); }
+  .rail-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .rail-item .count { margin-left: auto; font-size: 11.5px; color: var(--ink-faint); }
+  .rail-item.active { background: var(--accent-wash); color: var(--ink); font-weight: 500; }
+  .rail-item.active::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; background: var(--active-color, var(--ink)); border-radius: 0 2px 2px 0; }
+
+  .panel { flex: 1; padding: 22px 24px 60px; min-width: 0; }
+  .panel-title { font-family: var(--serif); font-size: 23px; display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .panel-sub { font-size: 12.5px; color: var(--ink-muted); margin-bottom: 20px; }
+  .back-link { display:none; font-size: 13px; color: var(--ink-muted); cursor: pointer; margin-bottom: 14px; }
+
+  .entry { padding-bottom: 16px; margin-bottom: 18px; border-bottom: 1px solid var(--hairline); }
+  .entry-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 10px; }
+  .entry-name { font-family: var(--serif); font-size: 16.5px; }
+  .entry-name-input { font-family: var(--serif); font-size: 16.5px; border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 8px; width: 100%; outline: none; }
+  .trash-btn { background: none; border: none; color: var(--ink-faint); cursor: pointer; padding: 4px; font-size: 12.5px; font-family: var(--sans); white-space: nowrap; }
+  .trash-btn:hover { color: var(--danger); }
+
+  .field-row { display: grid; grid-template-columns: 100px 1fr 20px; gap: 8px; align-items: center; font-size: 13.5px; margin-bottom: 9px; }
+  .field-label { color: var(--ink-faint); font-size: 12px; }
+  .field-value { color: var(--ink); cursor: text; padding: 2px 0; border-bottom: 1px dashed transparent; }
+  .field-value:hover { border-bottom-color: var(--hairline); }
+  .field-value-input { font-family: var(--sans); font-size: 13.5px; border: 1px solid var(--hairline); border-radius: 6px; padding: 4px 7px; outline: none; width: 100%; }
+  .field-remove { background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 15px; line-height: 1; padding: 0; justify-self: end; }
+  .field-remove:hover { color: var(--danger); }
+  .masked-val { letter-spacing: 2px; color: var(--ink-muted); cursor: pointer; font-variant-numeric: tabular-nums; }
+  .reveal-hint { letter-spacing: normal; font-size: 10.5px; color: var(--ink-faint); margin-left: 8px; }
+
+  .add-field { margin-top: 4px; font-size: 12px; color: var(--ink-muted); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .add-field:hover { color: var(--ink); }
+
+  .inline-form { display: grid; grid-template-columns: 100px 1fr auto; gap: 8px; margin-top: 10px; align-items: center; }
+  .inline-form input { font-family: var(--sans); font-size: 13px; border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 8px; outline: none; width: 100%; }
+  .inline-form label.mask-check { grid-column: 2 / span 1; display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-muted); }
+  .inline-form-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 2px; }
+  .mini-btn { font-family: var(--sans); font-size: 12px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--hairline); background: #fff; cursor: pointer; color: var(--ink-muted); }
+  .mini-btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+  .add-entry { margin-top: 4px; padding: 12px 0; text-align: center; font-size: 13px; color: var(--ink-muted); border: 1px dashed var(--hairline); border-radius: 8px; cursor: pointer; }
+  .add-entry:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+  .empty-state { color: var(--ink-faint); font-size: 13px; padding: 30px 0; text-align: center; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(34,31,29,0.35); display: none; align-items: center; justify-content: center; z-index: 20; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: #fff; border-radius: 12px; padding: 22px 22px 18px; width: 280px; box-shadow: 0 12px 32px rgba(0,0,0,0.18); }
+  .modal-title { font-family: var(--serif); font-size: 17px; margin-bottom: 6px; }
+  .modal-body { font-size: 13.5px; color: var(--ink-muted); margin-bottom: 18px; line-height: 1.4; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .modal-btn { font-family: var(--sans); font-size: 13.5px; padding: 8px 14px; border-radius: 7px; border: 1px solid var(--hairline); background: #fff; cursor: pointer; color: var(--ink); }
+  .modal-btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+  .search-results { padding: 4px 0; }
+  .search-hit { padding: 10px 0; border-bottom: 1px solid var(--hairline); cursor: pointer; }
+  .search-hit-name { font-family: var(--serif); font-size: 14.5px; }
+  .search-hit-meta { font-size: 12px; color: var(--ink-muted); }
+
+  /* ---------- mobile: stack instead of split ---------- */
+  @media (max-width: 760px) {
+    .layout { display: block; }
+    .rail { width: 100%; border-right: none; min-height: 0; display: block; }
+    .rail.hide-on-mobile { display: none; }
+    .panel { display: none; padding: 18px 18px 60px; }
+    .panel.show-on-mobile { display: block; }
+    .back-link { display: inline-block; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ PASSWORD GATE ============ -->
+<div id="gate">
+  <div class="gate-word">Home Base</div>
+  <div class="gate-sub">Enter password to continue</div>
+  <input type="password" id="gate-input" placeholder="••••••••" autocomplete="off">
+  <button onclick="tryUnlock()">Unlock</button>
+  <div class="gate-error" id="gate-error"></div>
+</div>
+
+<!-- ============ MAIN APP ============ -->
+<div id="app">
+  <div class="topbar">
+    <div class="layout" style="max-width:900px; padding:0;">
+      <div style="width:100%;">
+        <div class="top-row">
+          <div class="wordmark">Home Base <span class="status-dot" id="statusDot" title="Sync status"></span></div>
+        </div>
+        <div class="search">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-opacity="0.5"/><line x1="11.2" y1="11.2" x2="15" y2="15" stroke="currentColor" stroke-opacity="0.5"/></svg>
+          <input placeholder="Search — orthodontist, wifi, VIN…" id="searchInput" oninput="onSearch()">
+        </div>
+        <div class="emergency-strip" onclick="selectCategory('emergency')"><div class="em-label">Emergency</div><div>→</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="rail" id="rail"></div>
+    <div class="panel" id="panel">
+      <div class="empty-state">Choose a category on the left.</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <div class="modal-title">Delete this entry?</div>
+    <div class="modal-body" id="modalBody">This removes it and everything under it. This can't be undone.</div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn danger" onclick="doDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+
+// SHA-256 hash of the shared password. Placeholder = "homebase2026".
+// To set your real password: open a JS console anywhere and run
+//   crypto.subtle.digest('SHA-256', new TextEncoder().encode('yourPassword'))
+//     .then(b => console.log(Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('')))
+// then paste the result below.
+const PASSWORD_HASH = "feda419bb5f48fff4c2af104e786c3f7cad364bd8068acd22d0bea98402289cf";
+
+// Fill in with your Firebase project's web config (see comment in <head>)
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+const CATEGORIES = [
+  { id: 'medical',   title: 'Medical',         sub: 'Doctors, medications, insurance',     color: '#7D8F69', starter: ['Phone','Address','Portal'] },
+  { id: 'school',    title: 'School',          sub: 'Teachers, schedule, activities',      color: '#3E5C8A', starter: ['Phone','Email','Address'] },
+  { id: 'financial', title: 'Financial',       sub: 'Banks, cards, bills, policies',       color: '#8A6D3B', starter: ['Account #','Customer service','Notes'] },
+  { id: 'household', title: 'Household',       sub: 'Utilities, wifi, contractors',        color: '#6B5B7E', starter: ['Account #','Customer service','Notes'] },
+  { id: 'vehicles',  title: 'Vehicles',        sub: 'Insurance, registration, service',    color: '#4C7A7A', starter: ['VIN','License plate','Insurance policy #'] },
+  { id: 'documents', title: 'Documents',       sub: 'Passports, IDs, will, storage',       color: '#8A5A44', starter: ['Number','Expiration','Storage location'] },
+  { id: 'dates',     title: 'Important dates', sub: 'Renewals, birthdays, reminders',      color: '#A88B3E', starter: ['Date','Recurring','Notes'] },
+];
+const EMERGENCY_CAT = { id: 'emergency', title: 'Emergency', sub: 'Contacts, hospital, meeting point', color: '#B23A2E', starter: ['Phone','Notes'] };
+
+/* ================= PASSWORD GATE ================= */
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+async function tryUnlock() {
+  const val = document.getElementById('gate-input').value;
+  const hash = await sha256Hex(val);
+  if (hash === PASSWORD_HASH) {
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    initApp();
+  } else {
+    document.getElementById('gate-error').textContent = 'Incorrect password.';
+    document.getElementById('gate-input').value = '';
+  }
+}
+document.getElementById('gate-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+// No session persistence anywhere — a refresh always re-shows the gate above.
+
+/* ================= FIRESTORE ================= */
+let db = null;
+let entries = []; // {id, category, name, fields:[{label,value,masked}], order}
+let firestoreReady = false;
+
+function initFirebase() {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    db.collection('entries').orderBy('createdAt').onSnapshot(snap => {
+      entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      firestoreReady = true;
+      document.getElementById('statusDot').classList.remove('offline');
+      renderCurrentPanel();
+    }, err => {
+      console.error('Firestore error', err);
+      document.getElementById('statusDot').classList.add('offline');
+    });
+  } catch (e) {
+    console.error('Firebase init failed — check firebaseConfig.', e);
+    document.getElementById('statusDot').classList.add('offline');
+  }
+}
+
+function addEntryToDb(category, name, fields) {
+  return db.collection('entries').add({
+    category, name, fields, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+}
+function updateEntryInDb(id, data) { return db.collection('entries').doc(id).update(data); }
+function deleteEntryFromDb(id) { return db.collection('entries').doc(id).delete(); }
+
+/* ================= APP STATE / RENDER ================= */
+let currentCategory = 'medical';
+
+function initApp() {
+  renderRail();
+  initFirebase();
+  selectCategory('medical');
+}
+
+function allCats() { return [...CATEGORIES, EMERGENCY_CAT]; }
+function catById(id) { return allCats().find(c => c.id === id); }
+
+function renderRail() {
+  const rail = document.getElementById('rail');
+  rail.innerHTML = CATEGORIES.map(c => {
+    const count = entries.filter(e => e.category === c.id).length;
+    return `<div class="rail-item ${c.id===currentCategory?'active':''}" style="--active-color:${c.color}" onclick="selectCategory('${c.id}')">
+      <span class="dot" style="background:${c.color}"></span>${c.title}<span class="count">${count || ''}</span>
+    </div>`;
+  }).join('');
+}
+
+function selectCategory(catId) {
+  currentCategory = catId;
+  document.getElementById('searchInput').value = '';
+  renderRail();
+  renderCurrentPanel();
+  // mobile: show panel, hide rail
+  document.getElementById('rail').classList.add('hide-on-mobile');
+  document.getElementById('panel').classList.add('show-on-mobile');
+}
+function backToRail() {
+  document.getElementById('rail').classList.remove('hide-on-mobile');
+  document.getElementById('panel').classList.remove('show-on-mobile');
+}
+
+function renderCurrentPanel() {
+  const cat = catById(currentCategory);
+  const panel = document.getElementById('panel');
+  const catEntries = entries.filter(e => e.category === currentCategory);
+
+  let html = `<div class="back-link" onclick="backToRail()">‹ Home Base</div>`;
+  html += `<div class="panel-title"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${cat.color}"></span>${cat.title}</div>`;
+  html += `<div class="panel-sub">${cat.sub}</div>`;
+
+  if (!firestoreReady) {
+    html += `<div class="empty-state">Connecting… (check your Firebase config if this doesn't clear)</div>`;
+  } else if (catEntries.length === 0) {
+    html += `<div class="empty-state">Nothing here yet.</div>`;
+  } else {
+    catEntries.forEach(e => { html += renderEntry(e); });
+  }
+  html += `<div class="add-entry" onclick="startNewEntry()">+ add ${cat.id==='emergency' ? 'a contact' : 'an entry'}</div>`;
+  html += `<div id="new-entry-slot"></div>`;
+
+  panel.innerHTML = html;
+}
+
+function renderEntry(e) {
+  let fieldsHtml = (e.fields || []).map((f, i) => {
+    const valHtml = f.masked
+      ? `<span class="field-value masked-val" onclick="toggleMask(this)" data-real="${escapeHtml(f.value)}"><span class="masked-dots">${'•'.repeat(Math.min(f.value.length,10))}</span><span class="reveal-hint">tap to reveal</span></span>`
+      : `<span class="field-value" onclick="editField('${e.id}', ${i}, this)">${escapeHtml(f.value) || '—'}</span>`;
+    return `<div class="field-row">
+      <div class="field-label">${escapeHtml(f.label)}</div>
+      ${valHtml}
+      <button class="field-remove" onclick="removeField('${e.id}', ${i})">×</button>
+    </div>`;
+  }).join('');
+
+  return `<div class="entry" id="entry-${e.id}">
+    <div class="entry-head">
+      <div class="entry-name">${escapeHtml(e.name)}</div>
+      <button class="trash-btn" onclick="confirmDelete('${e.id}', '${escapeHtml(e.name).replace(/'/g,"")}')">Delete</button>
+    </div>
+    ${fieldsHtml}
+    <div class="add-field" onclick="showInlineForm('${e.id}')">+ add a line</div>
+    <div id="form-${e.id}"></div>
+  </div>`;
+}
+
+function escapeHtml(s) { return (s||'').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+/* ---------- mask reveal ---------- */
+function toggleMask(el) {
+  const real = el.getAttribute('data-real');
+  const dotsSpan = el.querySelector('.masked-dots');
+  if (dotsSpan.dataset.revealed === '1') {
+    dotsSpan.textContent = '•'.repeat(Math.min(real.length, 10));
+    dotsSpan.dataset.revealed = '0';
+  } else {
+    dotsSpan.textContent = real;
+    dotsSpan.dataset.revealed = '1';
+  }
+}
+
+/* ---------- inline edit existing field value ---------- */
+function editField(entryId, idx, span) {
+  const current = span.textContent === '—' ? '' : span.textContent;
+  const input = document.createElement('input');
+  input.className = 'field-value-input';
+  input.value = current;
+  span.replaceWith(input);
+  input.focus();
+  const commit = () => {
+    const entry = entries.find(x => x.id === entryId);
+    entry.fields[idx].value = input.value;
+    updateEntryInDb(entryId, { fields: entry.fields });
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => { if (ev.key === 'Enter') input.blur(); });
+}
+
+function removeField(entryId, idx) {
+  const entry = entries.find(x => x.id === entryId);
+  entry.fields.splice(idx, 1);
+  updateEntryInDb(entryId, { fields: entry.fields });
+}
+
+function showInlineForm(entryId) {
+  const holder = document.getElementById('form-' + entryId);
+  if (holder.childElementCount > 0) { holder.innerHTML = ''; return; }
+  holder.innerHTML = `
+    <div class="inline-form">
+      <input type="text" placeholder="Label" id="label-${entryId}">
+      <input type="text" placeholder="Value" id="value-${entryId}">
+      <label class="mask-check"><input type="checkbox" id="mask-${entryId}"> mask this value</label>
+      <div class="inline-form-actions">
+        <button class="mini-btn primary" onclick="saveInlineForm('${entryId}')">Save</button>
+        <button class="mini-btn" onclick="document.getElementById('form-${entryId}').innerHTML=''">Cancel</button>
+      </div>
+    </div>`;
+}
+function saveInlineForm(entryId) {
+  const label = document.getElementById('label-' + entryId).value.trim();
+  const value = document.getElementById('value-' + entryId).value.trim();
+  const masked = document.getElementById('mask-' + entryId).checked;
+  if (!label) return;
+  const entry = entries.find(x => x.id === entryId);
+  entry.fields = entry.fields || [];
+  entry.fields.push({ label, value, masked });
+  updateEntryInDb(entryId, { fields: entry.fields });
+  document.getElementById('form-' + entryId).innerHTML = '';
+}
+
+/* ---------- new entry ---------- */
+function startNewEntry() {
+  const cat = catById(currentCategory);
+  const slot = document.getElementById('new-entry-slot');
+  if (slot.childElementCount > 0) { slot.innerHTML = ''; return; }
+  const starterRows = cat.starter.map((label, i) => `
+    <div class="field-row">
+      <div class="field-label">${label}</div>
+      <input type="text" class="field-value-input" id="new-field-${i}" placeholder="—">
+      <button class="field-remove" onclick="this.parentElement.remove()">×</button>
+    </div>`).join('');
+
+  slot.innerHTML = `
+    <div class="entry">
+      <div class="entry-head">
+        <input type="text" class="entry-name-input" id="new-entry-name" placeholder="Name">
+      </div>
+      <div class="panel-sub" style="margin:6px 0 10px;">Suggested starting lines — edit, delete, or add more</div>
+      <div id="new-entry-fields" data-count="${cat.starter.length}">
+        ${starterRows.map((r,i) => r.replace('field-row', `field-row" data-label="${cat.starter[i]}`)).join('')}
+      </div>
+      <div class="add-field" onclick="addBlankStarterRow()">+ add a line</div>
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button class="mini-btn primary" onclick="saveNewEntry()">Save entry</button>
+        <button class="mini-btn" onclick="document.getElementById('new-entry-slot').innerHTML=''">Cancel</button>
+      </div>
+    </div>`;
+}
+let blankRowCount = 0;
+function addBlankStarterRow() {
+  blankRowCount++;
+  const container = document.getElementById('new-entry-fields');
+  const row = document.createElement('div');
+  row.className = 'field-row';
+  row.dataset.label = '';
+  row.innerHTML = `
+    <input type="text" class="field-value-input" placeholder="Label" style="font-size:12px;" oninput="this.parentElement.dataset.label=this.value">
+    <input type="text" class="field-value-input" placeholder="—">
+    <button class="field-remove" onclick="this.parentElement.remove()">×</button>`;
+  container.appendChild(row);
+}
+function saveNewEntry() {
+  const name = document.getElementById('new-entry-name').value.trim();
+  if (!name) { document.getElementById('new-entry-name').focus(); return; }
+  const rows = document.querySelectorAll('#new-entry-fields .field-row');
+  const fields = [];
+  rows.forEach(row => {
+    const label = row.dataset.label;
+    const inputs = row.querySelectorAll('input[type="text"]');
+    const valueInput = inputs.length > 1 ? inputs[1] : inputs[0];
+    const value = valueInput.value.trim();
+    if (label) fields.push({ label, value, masked: false });
+  });
+  addEntryToDb(currentCategory, name, fields).then(() => {
+    document.getElementById('new-entry-slot').innerHTML = '';
+  });
+}
+
+/* ---------- delete ---------- */
+let pendingDeleteId = null;
+function confirmDelete(id, label) {
+  pendingDeleteId = id;
+  document.getElementById('modalBody').textContent = `Remove "${label}" and everything under it. This can't be undone.`;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+function closeModal() { pendingDeleteId = null; document.getElementById('modalBackdrop').classList.remove('open'); }
+function doDelete() {
+  if (pendingDeleteId) deleteEntryFromDb(pendingDeleteId);
+  closeModal();
+}
+
+/* ---------- search ---------- */
+function onSearch() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const panel = document.getElementById('panel');
+  document.getElementById('rail').classList.remove('hide-on-mobile');
+  if (!q) { renderCurrentPanel(); return; }
+
+  const hits = [];
+  entries.forEach(e => {
+    let matched = e.name.toLowerCase().includes(q);
+    let matchedField = null;
+    (e.fields || []).forEach(f => {
+      if (!f.masked && (f.label.toLowerCase().includes(q) || (f.value||'').toLowerCase().includes(q))) {
+        matched = true; matchedField = f;
+      }
+    });
+    if (matched) hits.push({ entry: e, field: matchedField });
+  });
+
+  let html = `<div class="panel-title">Search results</div><div class="panel-sub">${hits.length} match${hits.length===1?'':'es'} for "${escapeHtml(q)}"</div>`;
+  html += `<div class="search-results">`;
+  if (hits.length === 0) html += `<div class="empty-state">Nothing found.</div>`;
+  hits.forEach(h => {
+    const cat = catById(h.entry.category);
+    html += `<div class="search-hit" onclick="selectCategory('${h.entry.category}')">
+      <div class="search-hit-name">${escapeHtml(h.entry.name)}</div>
+      <div class="search-hit-meta">${cat.title}${h.field ? ' — ' + escapeHtml(h.field.label) + ': ' + escapeHtml(h.field.value) : ''}</div>
+    </div>`;
+  });
+  html += `</div>`;
+  panel.innerHTML = html;
+  document.getElementById('panel').classList.add('show-on-mobile');
+}
+</script>
+</body>
+</html>
