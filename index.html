@@ -445,10 +445,10 @@ function startNewEntry() {
   const cat = catById(currentCategory);
   const slot = document.getElementById('new-entry-slot');
   if (slot.childElementCount > 0) { slot.innerHTML = ''; return; }
-  const starterRows = cat.starter.map((label, i) => `
-    <div class="field-row">
+  const starterRows = cat.starter.map((label) => `
+    <div class="field-row" data-label="${label}">
       <div class="field-label">${label}</div>
-      <input type="text" class="field-value-input" id="new-field-${i}" placeholder="—">
+      <input type="text" class="field-value-input" placeholder="—">
       <button class="field-remove" onclick="this.parentElement.remove()">×</button>
     </div>`).join('');
 
@@ -459,7 +459,7 @@ function startNewEntry() {
       </div>
       <div class="panel-sub" style="margin:6px 0 10px;">Suggested starting lines — edit, delete, or add more</div>
       <div id="new-entry-fields" data-count="${cat.starter.length}">
-        ${starterRows.map((r,i) => r.replace('field-row', `field-row" data-label="${cat.starter[i]}`)).join('')}
+        ${starterRows}
       </div>
       <div class="add-field" onclick="addBlankStarterRow()">+ add a line</div>
       <div style="display:flex; gap:8px; margin-top:14px;">
